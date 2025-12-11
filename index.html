@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IOS Prospect List Company Growth Curves Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #64748b;
+            --accent-color: #f1f5f9;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --border-color: #e2e8f0;
+            --bg-color: #ffffff;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8fafc;
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: var(--text-primary);
+            text-align: center;
+        }
+        .subtitle {
+            text-align: center;
+            color: var(--text-secondary);
+            margin-bottom: 30px;
+            font-weight: 400;
+        }
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 4fr;
+            gap: 30px;
+            margin-bottom: 20px;
+        }
+        .controls-panel {
+            background: var(--bg-color);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: var(--shadow);
+            height: fit-content;
+        }
+        .panel-header {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--text-primary);
+        }
+        #companiesContainer {
+            width: 100%;
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px;
+            background: var(--accent-color);
+            margin-bottom: 20px;
+        }
+        #companiesContainer label {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            color: var(--text-primary);
+            transition: background-color 0.2s;
+        }
+        #companiesContainer label:hover {
+            background-color: rgba(37, 99, 235, 0.05);
+            border-radius: 6px;
+            padding: 4px;
+        }
+        #companiesContainer input[type="checkbox"] {
+            margin-right: 10px;
+            accent-color: var(--primary-color);
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .control-group label {
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin: 0;
+        }
+        #growthType {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-color);
+            font-size: 0.875rem;
+            color: var(--text-primary);
+        }
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            background: var(--primary-color);
+            color: white;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-size: 0.875rem;
+        }
+        button:hover {
+            background: #1d4ed8;
+        }
+        button.secondary {
+            background: var(--secondary-color);
+        }
+        button.secondary:hover {
+            background: #475569;
+        }
+        .note {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 12px;
+            font-style: italic;
+        }
+        .chart-container {
+            background: var(--bg-color);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: var(--shadow);
+            height: 600px;
+            display: flex;
+            flex-direction: column;
+        }
+        #growthChart {
+            flex: 1;
+        }
+        .data-section {
+            margin-top: 20px;
+        }
+        .data-section .panel-header {
+            margin-bottom: 15px;
+        }
+        #dataTableContainer table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+            background: var(--bg-color);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        #dataTableContainer th,
+        #dataTableContainer td {
+            border: 1px solid var(--border-color);
+            padding: 10px 12px;
+            text-align: right;
+        }
+        #dataTableContainer th:first-child,
+        #dataTableContainer td:first-child {
+            text-align: left;
+            position: sticky;
+            left: 0;
+            background: var(--bg-color);
+            z-index: 1;
+        }
+        #dataTableContainer th {
+            background: var(--accent-color);
+            font-weight: 500;
+            text-align: center;
+        }
+        #dataTableContainer tbody tr:nth-child(even) {
+            background: var(--accent-color);
+        }
+        #dataTableContainer tbody tr:hover {
+            background: rgba(37, 99, 235, 0.05);
+        }
+        .no-data {
+            text-align: center;
+            color: var(--text-secondary);
+            margin: 40px;
+            font-size: 1rem;
+        }
+        .loading {
+            text-align: center;
+            margin: 50px;
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+        }
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            h1 {
+                font-size: 2rem;
+            }
+            .controls-panel {
+                padding: 20px;
+            }
+            .chart-container {
+                height: 500px;
+            }
+            #dataTableContainer th,
+            #dataTableContainer td {
+                padding: 8px 6px;
+                font-size: 0.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>IOS Prospect List Company Growth </h1>
+        <p class="subtitle">Visualize and compare growth trajectories across companies from your Google Sheet data.</p>
+        <div id="loading" class="loading">Loading data from Google Sheet...</div>
+        <div id="controls" class="controls" style="display: none;">
+            <div class="dashboard-grid">
+                <div class="controls-panel">
+                    <div class="panel-header">Company Selection</div>
+                    <div id="companiesContainer"></div>
+                    <div class="note">Scroll to browse all companies. Check boxes to select for visualization.</div>
+                    <div class="control-group">
+                        <label for="growthType">Growth Type:</label>
+                        <select id="growthType">
+                            <option value="total">Total (Greenfield + Acquisitions)</option>
+                            <option value="greenfield">Greenfield Only</option>
+                            <option value="acquisitions">Acquisitions Only</option>
+                        </select>
+                        <button id="top10Btn">Top 10</button>
+                        <button id="selectAllBtn" class="secondary">Select All</button>
+                        <button id="clearBtn" class="secondary">Clear</button>
+                    </div>
+                    <div class="note">Switching growth type auto-selects the top 10 performers for that metric.</div>
+                </div>
+                <div>
+                    <div class="chart-container">
+                        <canvas id="growthChart"></canvas>
+                    </div>
+                    <div class="data-section">
+                        <div class="panel-header">Selected Data Table</div>
+                        <div id="dataTableContainer"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="noDataMsg" class="no-data" style="display: none;">No companies selected. Use "Top 10" to get started or check boxes to select specific companies.</div>
+    </div>
+    <script>
+        const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgvFwe2L5YOjSUuZjb1kjvdt3RsQ95-QOljNyq7O0Hn6dsMYDInW8gFBp4jCjdamKX6YLgYGqFur5m/pub?output=csv';
+        const ctx = document.getElementById('growthChart').getContext('2d');
+        let chart;
+        let companyList = [];
+        let labels = ["2020", "2021", "2022", "2023", "2024", "2025"];
+        const gPrefix = "Estimated Greenfield Openings Growth ";
+        const aPrefix = "Estimated Acquisitions Openings Growth ";
+
+        // Color generator for datasets
+        function getRandomColor() {
+            const letters = '0123456789ABCDEF';
+            let color = '#';
+            for (let i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+
+        function computeData(comp, mode) {
+            if (mode === 'total') {
+                return comp.g.map((g, j) => g + comp.a[j]);
+            } else if (mode === 'greenfield') {
+                return [...comp.g];
+            } else {
+                return [...comp.a];
+            }
+        }
+
+        function computeScore(comp, mode) {
+            const data = computeData(comp, mode);
+            return data.reduce((sum, val) => sum + val, 0);
+        }
+
+        function getSelectedIndices() {
+            const checkboxes = document.querySelectorAll('#companiesContainer input[type="checkbox"]:checked');
+            return Array.from(checkboxes).map(cb => parseInt(cb.value));
+        }
+
+        function updateChart() {
+            const mode = document.getElementById('growthType').value;
+            const selectedIndices = getSelectedIndices();
+
+            const datasets = selectedIndices.map(i => {
+                const comp = companyList[i];
+                const data = computeData(comp, mode);
+                return {
+                    label: comp.name,
+                    data: data,
+                    borderColor: comp.color,
+                    backgroundColor: comp.color + '20',
+                    fill: false,
+                    tension: 0.1,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                };
+            });
+
+            document.getElementById('noDataMsg').style.display = datasets.length === 0 ? 'block' : 'none';
+            document.getElementById('growthChart').parentElement.style.display = datasets.length > 0 ? 'block' : 'none';
+            document.getElementById('controls').querySelector('.data-section').style.display = datasets.length > 0 ? 'block' : 'none';
+
+            if (chart) {
+                chart.destroy();
+            }
+
+            if (datasets.length === 0) {
+                return;
+            }
+
+            const modeTitle = mode.charAt(0).toUpperCase() + mode.slice(1);
+            const config = {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            },
+                            title: {
+                                display: true,
+                                text: `${modeTitle} Growth Value`,
+                                font: { weight: 500 }
+                            }
+                        },
+                        x: {
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Year',
+                                font: { weight: 500 }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20,
+                                font: { size: 12 }
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: `Company Branch Curves (${modeTitle})`,
+                            font: { size: 18, weight: 600 },
+                            padding: { bottom: 20 }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleColor: 'white',
+                            bodyColor: 'white',
+                            cornerRadius: 8
+                        }
+                    }
+                }
+            };
+
+            chart = new Chart(ctx, config);
+
+            // Update data table
+            const tableContainer = document.getElementById('dataTableContainer');
+            let tableHTML = '<table><thead><tr><th>Company</th>';
+            labels.forEach(year => {
+                tableHTML += `<th>${year}</th>`;
+            });
+            tableHTML += '</tr></thead><tbody>';
+            selectedIndices.forEach(i => {
+                const comp = companyList[i];
+                const data = computeData(comp, mode);
+                tableHTML += `<tr><td style="font-weight: 500;">${comp.name}</td>`;
+                data.forEach(val => {
+                    tableHTML += `<td>${val.toFixed(1)}</td>`;
+                });
+                tableHTML += '</tr>';
+            });
+            tableHTML += '</tbody></table>';
+            tableContainer.innerHTML = tableHTML;
+        }
+
+        function updateSelection(newSelectedIndices) {
+            const checkboxes = document.querySelectorAll('#companiesContainer input[type="checkbox"]');
+            checkboxes.forEach(cb => {
+                cb.checked = newSelectedIndices.includes(parseInt(cb.value));
+            });
+        }
+
+        function selectTop10() {
+            const mode = document.getElementById('growthType').value;
+            const withScores = companyList
+                .map((comp, i) => ({ i, score: computeScore(comp, mode) }))
+                .filter(s => s.score > 0)
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 10)
+                .map(s => s.i);
+
+            updateSelection(withScores);
+            updateChart();
+        }
+
+        // Fetch and parse CSV
+        fetch(csvUrl)
+            .then(response => response.text())
+            .then(csvText => {
+                Papa.parse(csvText, {
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: function(results) {
+                        const data = results.data;
+                        if (data.length === 0) {
+                            console.error('No data found');
+                            return;
+                        }
+
+                        const container = document.getElementById('companiesContainer');
+
+                        data.forEach((row) => {
+                            const companyName = row['Company']?.trim();
+                            if (!companyName) return;
+
+                            const gValues = labels.map(year => parseFloat(row[gPrefix + year]) || 0);
+                            const aValues = labels.map(year => parseFloat(row[aPrefix + year]) || 0);
+
+                            if (gValues.every(v => v === 0) && aValues.every(v => v === 0)) return;
+
+                            const color = getRandomColor();
+                            const index = companyList.length;
+                            companyList.push({
+                                name: companyName,
+                                g: gValues,
+                                a: aValues,
+                                color: color
+                            });
+
+                            const labelEl = document.createElement('label');
+                            const checkbox = document.createElement('input');
+                            checkbox.type = 'checkbox';
+                            checkbox.value = index;
+                            labelEl.appendChild(checkbox);
+                            labelEl.appendChild(document.createTextNode(` ${companyName}`));
+                            container.appendChild(labelEl);
+                        });
+
+                        if (companyList.length === 0) {
+                            console.error('No valid companies found');
+                            return;
+                        }
+
+                        // Event listeners for checkboxes
+                        container.addEventListener('change', function(e) {
+                            if (e.target.type === 'checkbox') {
+                                updateChart();
+                            }
+                        });
+
+                        document.getElementById('growthType').addEventListener('change', function() {
+                            selectTop10(); // Auto-select top 10 on growth type change
+                        });
+
+                        document.getElementById('top10Btn').addEventListener('click', selectTop10);
+
+                        document.getElementById('selectAllBtn').addEventListener('click', () => {
+                            const allIndices = companyList.map((_, i) => i);
+                            updateSelection(allIndices);
+                            updateChart();
+                        });
+
+                        document.getElementById('clearBtn').addEventListener('click', () => {
+                            updateSelection([]);
+                            updateChart();
+                        });
+
+                        // Initial load: Total, Top 10
+                        document.getElementById('growthType').value = 'total';
+                        selectTop10();
+
+                        // Show controls and chart
+                        document.getElementById('loading').style.display = 'none';
+                        document.getElementById('controls').style.display = 'block';
+                    },
+                    error: function(error) {
+                        console.error('PapaParse error:', error);
+                    }
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching data:', error);
+                document.getElementById('loading').textContent = 'Error loading data: ' + error.message + '. Please check the console.';
+            });
+    </script>
+</body>
+</html>
