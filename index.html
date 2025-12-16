@@ -105,7 +105,7 @@
             color: var(--text-secondary);
             margin: 0;
         }
-        #growthType {
+        #growthType, #companyType {
             padding: 8px 12px;
             border: 1px solid var(--border-color);
             border-radius: 6px;
@@ -237,6 +237,14 @@
                     <div id="companiesContainer"></div>
                     <div class="note">Scroll to browse all companies. Check boxes to select for visualization.</div>
                     <div class="control-group">
+                        <label for="companyType">Company Type:</label>
+                        <select id="companyType">
+                            <option value="all">All</option>
+                            <option value="public">Public</option>
+                            <option value="private">Private</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
                         <label for="growthType">Growth Type:</label>
                         <select id="growthType">
                             <option value="total">Total (Greenfield + Acquisitions)</option>
@@ -247,7 +255,7 @@
                         <button id="selectAllBtn" class="secondary">Select All</button>
                         <button id="clearBtn" class="secondary">Clear</button>
                     </div>
-                    <div class="note">Switching growth type auto-selects the top 10 performers for that metric.</div>
+                    <div class="note">Switching growth type or company type auto-selects the top 10 performers for that metric.</div>
                 </div>
                 <div>
                     <div class="chart-container">
@@ -270,7 +278,6 @@
         let labels = ["2020", "2021", "2022", "2023", "2024", "2025"];
         const gPrefix = "Estimated Greenfield Openings Growth ";
         const aPrefix = "Estimated Acquisitions Openings Growth ";
-
         // Color generator for datasets
         function getRandomColor() {
             const letters = '0123456789ABCDEF';
@@ -280,7 +287,6 @@
             }
             return color;
         }
-
         function computeData(comp, mode) {
             if (mode === 'total') {
                 return comp.g.map((g, j) => g + comp.a[j]);
@@ -290,21 +296,57 @@
                 return [...comp.a];
             }
         }
-
         function computeScore(comp, mode) {
             const data = computeData(comp, mode);
             return data.reduce((sum, val) => sum + val, 0);
         }
-
         function getSelectedIndices() {
             const checkboxes = document.querySelectorAll('#companiesContainer input[type="checkbox"]:checked');
             return Array.from(checkboxes).map(cb => parseInt(cb.value));
         }
-
+        function getFilteredIndices() {
+            const type = document.getElementById('companyType').value;
+            return companyList.map((_, i) => i).filter(i => {
+                const comp = companyList[i];
+                return type === 'all' || (type === 'public' && comp.isPublic) || (type === 'private' && !comp.isPublic);
+            });
+        }
+        function updateCompanyList() {
+            const container = document.getElementById('companiesContainer');
+            container.innerHTML = '';
+            const filteredIndices = getFilteredIndices();
+            filteredIndices.forEach(i => {
+                const comp = companyList[i];
+                const labelEl = document.createElement('label');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = i;
+                labelEl.appendChild(checkbox);
+                labelEl.appendChild(document.createTextNode(` ${comp.name}`));
+                container.appendChild(labelEl);
+            });
+        }
+        function updateSelection(newSelectedIndices) {
+            const checkboxes = document.querySelectorAll('#companiesContainer input[type="checkbox"]');
+            checkboxes.forEach(cb => {
+                cb.checked = newSelectedIndices.includes(parseInt(cb.value));
+            });
+        }
+        function selectTop10() {
+            const mode = document.getElementById('growthType').value;
+            const filteredIndices = getFilteredIndices();
+            const withScores = filteredIndices
+                .map(i => ({ i, score: computeScore(companyList[i], mode) }))
+                .filter(s => s.score > 0)
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 10)
+                .map(s => s.i);
+            updateSelection(withScores);
+            updateChart();
+        }
         function updateChart() {
             const mode = document.getElementById('growthType').value;
             const selectedIndices = getSelectedIndices();
-
             const datasets = selectedIndices.map(i => {
                 const comp = companyList[i];
                 const data = computeData(comp, mode);
@@ -319,19 +361,15 @@
                     pointHoverRadius: 6
                 };
             });
-
             document.getElementById('noDataMsg').style.display = datasets.length === 0 ? 'block' : 'none';
             document.getElementById('growthChart').parentElement.style.display = datasets.length > 0 ? 'block' : 'none';
             document.getElementById('controls').querySelector('.data-section').style.display = datasets.length > 0 ? 'block' : 'none';
-
             if (chart) {
                 chart.destroy();
             }
-
             if (datasets.length === 0) {
                 return;
             }
-
             const modeTitle = mode.charAt(0).toUpperCase() + mode.slice(1);
             const config = {
                 type: 'line',
@@ -390,9 +428,7 @@
                     }
                 }
             };
-
             chart = new Chart(ctx, config);
-
             // Update data table
             const tableContainer = document.getElementById('dataTableContainer');
             let tableHTML = '<table><thead><tr><th>Company</th>';
@@ -412,27 +448,6 @@
             tableHTML += '</tbody></table>';
             tableContainer.innerHTML = tableHTML;
         }
-
-        function updateSelection(newSelectedIndices) {
-            const checkboxes = document.querySelectorAll('#companiesContainer input[type="checkbox"]');
-            checkboxes.forEach(cb => {
-                cb.checked = newSelectedIndices.includes(parseInt(cb.value));
-            });
-        }
-
-        function selectTop10() {
-            const mode = document.getElementById('growthType').value;
-            const withScores = companyList
-                .map((comp, i) => ({ i, score: computeScore(comp, mode) }))
-                .filter(s => s.score > 0)
-                .sort((a, b) => b.score - a.score)
-                .slice(0, 10)
-                .map(s => s.i);
-
-            updateSelection(withScores);
-            updateChart();
-        }
-
         // Fetch and parse CSV
         fetch(csvUrl)
             .then(response => response.text())
@@ -446,69 +461,55 @@
                             console.error('No data found');
                             return;
                         }
-
                         const container = document.getElementById('companiesContainer');
-
                         data.forEach((row) => {
                             const companyName = row['Company']?.trim();
                             if (!companyName) return;
-
                             const gValues = labels.map(year => parseFloat(row[gPrefix + year]) || 0);
                             const aValues = labels.map(year => parseFloat(row[aPrefix + year]) || 0);
-
                             if (gValues.every(v => v === 0) && aValues.every(v => v === 0)) return;
-
                             const color = getRandomColor();
                             const index = companyList.length;
                             companyList.push({
                                 name: companyName,
                                 g: gValues,
                                 a: aValues,
-                                color: color
+                                color: color,
+                                isPublic: row['Publicly Traded'] === 'Yes'
                             });
-
-                            const labelEl = document.createElement('label');
-                            const checkbox = document.createElement('input');
-                            checkbox.type = 'checkbox';
-                            checkbox.value = index;
-                            labelEl.appendChild(checkbox);
-                            labelEl.appendChild(document.createTextNode(` ${companyName}`));
-                            container.appendChild(labelEl);
                         });
-
                         if (companyList.length === 0) {
                             console.error('No valid companies found');
                             return;
                         }
-
                         // Event listeners for checkboxes
                         container.addEventListener('change', function(e) {
                             if (e.target.type === 'checkbox') {
                                 updateChart();
                             }
                         });
-
+                        document.getElementById('companyType').addEventListener('change', function() {
+                            updateCompanyList();
+                            selectTop10();
+                        });
                         document.getElementById('growthType').addEventListener('change', function() {
                             selectTop10(); // Auto-select top 10 on growth type change
                         });
-
                         document.getElementById('top10Btn').addEventListener('click', selectTop10);
-
                         document.getElementById('selectAllBtn').addEventListener('click', () => {
-                            const allIndices = companyList.map((_, i) => i);
-                            updateSelection(allIndices);
+                            const filteredIndices = getFilteredIndices();
+                            updateSelection(filteredIndices);
                             updateChart();
                         });
-
                         document.getElementById('clearBtn').addEventListener('click', () => {
                             updateSelection([]);
                             updateChart();
                         });
-
-                        // Initial load: Total, Top 10
+                        // Initial load: All, Total, Top 10
+                        document.getElementById('companyType').value = 'all';
+                        updateCompanyList();
                         document.getElementById('growthType').value = 'total';
                         selectTop10();
-
                         // Show controls and chart
                         document.getElementById('loading').style.display = 'none';
                         document.getElementById('controls').style.display = 'block';
